@@ -53,7 +53,7 @@ st.markdown("""
         border: 1px solid #e2e8f0;
         border-radius: 12px;
         padding: 14px 18px;
-        margin-bottom: 10px;
+        margin-bottom: 8px;
         display: flex;
         justify-content: space-between;
         align-items: center;
@@ -61,15 +61,15 @@ st.markdown("""
     }
     
     .card-top1 {
-        background: #f0f7ff;
-        border-color: #93c5fd;
+        background: #f0f7ff !important;
+        border-color: #93c5fd !important;
     }
     
     .rank-num {
-        font-size: 1.1rem;
+        font-size: 1.15rem;
         font-weight: 800;
         color: #64748b;
-        width: 28px;
+        width: 32px;
         font-family: 'JetBrains Mono', monospace;
     }
     
@@ -109,7 +109,7 @@ st.markdown("""
     }
     
     .flow-amount-pos {
-        font-size: 1.15rem;
+        font-size: 1.18rem;
         font-weight: 800;
         color: #059669;
         font-family: 'JetBrains Mono', monospace;
@@ -117,7 +117,7 @@ st.markdown("""
     }
 
     .flow-amount-neg {
-        font-size: 1.15rem;
+        font-size: 1.18rem;
         font-weight: 800;
         color: #dc2626;
         font-family: 'JetBrains Mono', monospace;
@@ -125,7 +125,7 @@ st.markdown("""
     }
     
     .flow-sub {
-        font-size: 0.78rem;
+        font-size: 0.8rem;
         font-weight: 700;
         color: #64748b;
         text-align: right;
@@ -135,12 +135,10 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # App Header
-st.markdown("""
-<div class="main-header">
-    <div class="main-title">💰 資金フロー Top10 / Bottom10</div>
-    <div class="subtitle">売買代金 × 騰落方向で概算した資金の向きです（実需を捉える出来高加重フロー推計）</div>
-</div>
-""", unsafe_allow_html=True)
+st.markdown("""<div class="main-header">
+<div class="main-title">💰 資金フロー Top10 / Bottom10</div>
+<div class="subtitle">売買代金 × 騰落方向で概算した資金の向きです（実需を捉える出来高加重フロー推計）</div>
+</div>""", unsafe_allow_html=True)
 
 # Load / Cache Data
 @st.cache_data(ttl=3600)
@@ -149,7 +147,7 @@ def load_data():
 
 data = load_data()
 
-# Refresh trigger
+# Controls
 col_ctrl1, col_ctrl2, col_ctrl3 = st.columns([1, 1, 1])
 
 with col_ctrl1:
@@ -198,41 +196,26 @@ with tab_in:
         
         tag_count = f'{item.get("theme_count", len(item.get("themes", [])))} テーマ' if unit_mode == "大分類" else f'{item.get("ticker_count", len(item.get("tickers", [])))} 銘柄'
         
-        with st.container():
-            st.markdown(f"""
-            <div class="flow-card {top_cls}">
-                <div style="display: flex; align-items: center; gap: 12px;">
-                    <div class="rank-num">{rank}</div>
-                    <div>
-                        <div class="theme-name">{item['name']}</div>
-                        <div style="display: flex; gap: 6px; margin-top: 4px;">
-                            <span class="badge-gray">{tag_count}</span>
-                            {streak_html}
-                        </div>
-                    </div>
-                </div>
-                <div>
-                    <div class="flow-amount-pos">{fmt_money(item['net_flow_1w'])}</div>
-                    <div class="flow-sub">流入率 +{item['inflow_rate_1w']}% · 1D {'+' if item['change_1d']>=0 else ''}{item['change_1d']}%</div>
-                </div>
-            </div>
-            """, unsafe_allow_html=True)
+        # Build clean unindented HTML to avoid Markdown code-block interpretation
+        card_html = f"""<div class="flow-card {top_cls}"><div style="display: flex; align-items: center; gap: 12px;"><div class="rank-num">{rank}</div><div><div class="theme-name">{item['name']}</div><div style="display: flex; gap: 6px; margin-top: 4px;"><span class="badge-gray">{tag_count}</span>{streak_html}</div></div></div><div><div class="flow-amount-pos">{fmt_money(item['net_flow_1w'])}</div><div class="flow-sub">流入率 +{item['inflow_rate_1w']}% · 1D {'+' if item['change_1d']>=0 else ''}{item['change_1d']}%</div></div></div>"""
+        
+        st.markdown(card_html, unsafe_allow_html=True)
 
-            # Drilldown Expander
-            with st.expander(f"🔍 {item['name']} の構成銘柄・内訳を見る"):
-                if unit_mode == "大分類":
-                    subthemes = item.get("subtheme_data", [])
-                    st.write("**内包テーマ一覧:**")
-                    for sth in subthemes:
-                        st.write(f"- **{sth['name']}**: {fmt_money(sth['net_flow_1w'])} (流入率: +{sth['inflow_rate_1w']}%)")
+        # Drilldown Expander
+        with st.expander(f"🔍 {item['name']} の構成銘柄・内訳を見る"):
+            if unit_mode == "大分類":
+                subthemes = item.get("subtheme_data", [])
+                st.write("**内包テーマ一覧:**")
+                for sth in subthemes:
+                    st.write(f"- **{sth['name']}**: {fmt_money(sth['net_flow_1w'])} (流入率: +{sth['inflow_rate_1w']}%)")
+            else:
+                stocks = item.get("stocks", [])
+                if stocks:
+                    df_stk = pd.DataFrame(stocks)[["ticker", "latest_price", "change_1d", "net_flow_1w", "inflow_rate_1w", "volume_multiplier"]]
+                    df_stk.columns = ["ティッカー", "株価($)", "1D騰落(%)", "推定フロー($)", "流入率(%)", "出来高倍率"]
+                    st.dataframe(df_stk, use_container_width=True)
                 else:
-                    stocks = item.get("stocks", [])
-                    if stocks:
-                        df_stk = pd.DataFrame(stocks)[["ticker", "latest_price", "change_1d", "net_flow_1w", "inflow_rate_1w", "volume_multiplier"]]
-                        df_stk.columns = ["ティッカー", "株価($)", "1D騰落(%)", "推定フロー($)", "流入率(%)", "出来高倍率"]
-                        st.dataframe(df_stk, use_container_width=True)
-                    else:
-                        st.write("構成銘柄:", ", ".join(item.get("tickers", [])))
+                    st.write("構成銘柄:", ", ".join(item.get("tickers", [])))
 
 with tab_out:
     sort_key = "net_flow_1w" if sort_mode == "金額順" else "inflow_rate_1w"
@@ -245,24 +228,8 @@ with tab_out:
         
         tag_count = f'{item.get("theme_count", len(item.get("themes", [])))} テーマ' if unit_mode == "大分類" else f'{item.get("ticker_count", len(item.get("tickers", [])))} 銘柄'
         
-        with st.container():
-            st.markdown(f"""
-            <div class="flow-card">
-                <div style="display: flex; align-items: center; gap: 12px;">
-                    <div class="rank-num">{rank}</div>
-                    <div>
-                        <div class="theme-name">{item['name']}</div>
-                        <div style="display: flex; gap: 6px; margin-top: 4px;">
-                            <span class="badge-gray">{tag_count}</span>
-                            {streak_html}
-                        </div>
-                    </div>
-                </div>
-                <div>
-                    <div class="flow-amount-neg">{fmt_money(item['net_flow_1w'])}</div>
-                    <div class="flow-sub">流入率 {item['inflow_rate_1w']}% · 1D {'+' if item['change_1d']>=0 else ''}{item['change_1d']}%</div>
-                </div>
-            </div>
-            """, unsafe_allow_html=True)
+        card_html = f"""<div class="flow-card"><div style="display: flex; align-items: center; gap: 12px;"><div class="rank-num">{rank}</div><div><div class="theme-name">{item['name']}</div><div style="display: flex; gap: 6px; margin-top: 4px;"><span class="badge-gray">{tag_count}</span>{streak_html}</div></div></div><div><div class="flow-amount-neg">{fmt_money(item['net_flow_1w'])}</div><div class="flow-sub">流入率 {item['inflow_rate_1w']}% · 1D {'+' if item['change_1d']>=0 else ''}{item['change_1d']}%</div></div></div>"""
+        
+        st.markdown(card_html, unsafe_allow_html=True)
 
 st.caption("※ 資金フローは売買代金と高安終値の位置関係から推計した参考値です。")

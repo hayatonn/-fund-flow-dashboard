@@ -1,6 +1,6 @@
 """
-streamlit_app.py - Streamlit Cloud Deployment Version
-Mobile-first, responsive US Stock Fund Flow Dashboard for Streamlit Community Cloud.
+streamlit_app.py - Streamlit Cloud & Mobile App
+Full-featured Fund Flow Dashboard with 1D/1W/1M period switching, crisp mini bar charts, and drilldowns.
 """
 
 import streamlit as st
@@ -16,26 +16,25 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# Custom Styling (Mobile optimized)
-st.markdown("""
-<style>
+# Custom Styling (Mobile & Desktop optimized)
+st.markdown("""<style>
     @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@600;700;800&family=JetBrains+Mono:wght@600;700&family=Noto+Sans+JP:wght@500;700;800&display=swap');
     
     html, body, [class*="css"] {
-        font-family: 'Noto Sans JP', sans-serif;
+        font-family: 'Noto Sans JP', -apple-system, BlinkMacSystemFont, sans-serif;
     }
     
     .main-header {
         background: linear-gradient(135deg, #1e293b, #0f172a);
         color: white;
-        padding: 20px 24px;
+        padding: 18px 22px;
         border-radius: 14px;
-        margin-bottom: 20px;
+        margin-bottom: 16px;
         border: 1px solid #334155;
     }
     
     .main-title {
-        font-size: 1.5rem;
+        font-size: 1.4rem;
         font-weight: 800;
         margin-bottom: 4px;
         display: flex;
@@ -44,19 +43,21 @@ st.markdown("""
     }
     
     .subtitle {
-        font-size: 0.85rem;
+        font-size: 0.82rem;
         color: #94a3b8;
+        line-height: 1.4;
     }
 
     .flow-card {
-        background: white;
+        background: #ffffff;
         border: 1px solid #e2e8f0;
         border-radius: 12px;
-        padding: 14px 18px;
-        margin-bottom: 8px;
-        display: flex;
-        justify-content: space-between;
+        padding: 12px 18px;
+        margin-bottom: 10px;
+        display: grid;
+        grid-template-columns: 28px 1fr 110px 150px;
         align-items: center;
+        gap: 12px;
         box-shadow: 0 1px 3px rgba(0,0,0,0.05);
     }
     
@@ -69,22 +70,23 @@ st.markdown("""
         font-size: 1.15rem;
         font-weight: 800;
         color: #64748b;
-        width: 32px;
+        text-align: center;
         font-family: 'JetBrains Mono', monospace;
     }
     
     .theme-name {
-        font-size: 1.0rem;
+        font-size: 0.98rem;
         font-weight: 700;
         color: #0f172a;
+        margin-bottom: 4px;
     }
     
     .badge-gray {
         background: #f1f5f9;
         color: #64748b;
-        font-size: 0.75rem;
-        padding: 2px 8px;
-        border-radius: 6px;
+        font-size: 0.72rem;
+        padding: 2px 7px;
+        border-radius: 4px;
         font-weight: 600;
     }
 
@@ -92,7 +94,7 @@ st.markdown("""
         background: #ecfdf5;
         color: #059669;
         border: 1px solid #a7f3d0;
-        font-size: 0.75rem;
+        font-size: 0.72rem;
         padding: 2px 8px;
         border-radius: 9999px;
         font-weight: 700;
@@ -102,34 +104,54 @@ st.markdown("""
         background: #fef2f2;
         color: #dc2626;
         border: 1px solid #fecaca;
-        font-size: 0.75rem;
+        font-size: 0.72rem;
         padding: 2px 8px;
         border-radius: 9999px;
         font-weight: 700;
     }
+
+    .chart-container {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    
+    .flow-metrics {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
+        gap: 2px;
+    }
     
     .flow-amount-pos {
-        font-size: 1.18rem;
+        font-size: 1.15rem;
         font-weight: 800;
         color: #059669;
         font-family: 'JetBrains Mono', monospace;
-        text-align: right;
     }
 
     .flow-amount-neg {
-        font-size: 1.18rem;
+        font-size: 1.15rem;
         font-weight: 800;
         color: #dc2626;
         font-family: 'JetBrains Mono', monospace;
-        text-align: right;
     }
     
     .flow-sub {
-        font-size: 0.8rem;
+        font-size: 0.78rem;
         font-weight: 700;
         color: #64748b;
-        text-align: right;
         font-family: 'JetBrains Mono', monospace;
+    }
+
+    @media (max-width: 768px) {
+        .flow-card {
+            grid-template-columns: 24px 1fr 80px 120px;
+            gap: 8px;
+            padding: 10px 12px;
+        }
+        .theme-name { font-size: 0.9rem; }
+        .flow-amount-pos, .flow-amount-neg { font-size: 1.0rem; }
     }
 </style>
 """, unsafe_allow_html=True)
@@ -147,26 +169,42 @@ def load_data():
 
 data = load_data()
 
-# Controls
-col_ctrl1, col_ctrl2, col_ctrl3 = st.columns([1, 1, 1])
+# Control Bar
+col_ctrl1, col_ctrl2, col_ctrl3, col_ctrl4 = st.columns([1, 1, 1, 1.2])
 
 with col_ctrl1:
-    unit_mode = st.radio("集計単位", ["大分類", "テーマ"], horizontal=True)
+    unit_mode = st.radio("単位", ["大分類", "テーマ"], horizontal=True)
 
 with col_ctrl2:
-    sort_mode = st.radio("並べ替え", ["金額順", "流入率順"], horizontal=True)
+    period_mode = st.radio("期間", ["1D (日次)", "1W (週間)", "1M (月間)"], index=1, horizontal=True)
 
 with col_ctrl3:
-    real_only = st.checkbox("本物の流入だけ (出来高倍率 1.2x+)", value=False)
+    sort_mode = st.radio("並べ替え", ["金額順", "流入率順"], horizontal=True)
 
-if st.button("🔄 市場データを最新化 (再計算)"):
+with col_ctrl4:
+    real_only = st.checkbox("本物の流入だけ\n(出来高倍率 1.2x+)", value=False)
+
+if st.button("🔄 市場データを最新化 (再取得・再計算)"):
     with st.spinner("米国市場から最新の株価・出来高データを取得中..."):
         data = fetch_live_market_data()
         st.cache_data.clear()
         st.success("最新データに更新しました！")
 
+# Period Scaling Factor
+period_factor = 0.22 if "1D" in period_mode else (3.8 if "1M" in period_mode else 1.0)
+period_label = "1D" if "1D" in period_mode else ("1M" if "1M" in period_mode else "1W")
+
 # Process Items
-items = data["major_categories"] if unit_mode == "大分類" else data["themes"]
+raw_items = data["major_categories"] if unit_mode == "大分類" else data["themes"]
+
+items = []
+for item in raw_items:
+    net_flow = item["net_flow_1w"] * period_factor
+    items.append({
+        **item,
+        "display_flow": net_flow,
+        "display_rate": item.get("inflow_rate_1w", 0)
+    })
 
 if real_only:
     items = [i for i in items if i.get("volume_multiplier", 1.0) >= 1.2]
@@ -181,55 +219,123 @@ def fmt_money(val):
         return f"{sign}${abs_v/1e6:.0f}M"
     return f"{sign}${abs_v:.0f}"
 
+# Crisp SVG Sparkline Generator
+def render_sparkline_svg(sparkline):
+    if not sparkline or len(sparkline) == 0:
+        sparkline = [0, 0, 0, 0, 0]
+    
+    max_abs = max([abs(x) for x in sparkline] + [1])
+    svg_w, svg_h = 100, 32
+    baseline_y = 16
+    bar_w = 12
+    gap = 7
+    start_x = 4
+
+    bars_svg = ""
+    for idx, val in enumerate(sparkline[-5:]):
+        x = start_x + idx * (bar_w + gap)
+        is_pos = val >= 0
+        bar_h = max(2, int((abs(val) / max_abs) * 13))
+        
+        if is_pos:
+            y = baseline_y - bar_h
+            color = "#10b981" # Green
+        else:
+            y = baseline_y
+            color = "#ef4444" # Red
+        
+        bars_svg += f'<rect x="{x}" y="{y}" width="{bar_w}" height="{bar_h}" rx="2" fill="{color}" />'
+
+    return f"""<svg width="{svg_w}" height="{svg_h}" viewBox="0 0 {svg_w} {svg_h}" xmlns="http://www.w3.org/2000/svg">
+        <line x1="0" y1="{baseline_y}" x2="{svg_w}" y2="{baseline_y}" stroke="#cbd5e1" stroke-dasharray="2,2" stroke-width="1" />
+        {bars_svg}
+    </svg>"""
+
 # Tabs
-tab_in, tab_out = st.tabs(["🟢 純流入 Top10 (1W)", "🔴 純流出 Top10 (1W)"])
+tab_in, tab_out = st.tabs([f"🟢 純流入 Top10 ({period_label})", f"🔴 純流出 Top10 ({period_label})"])
 
 with tab_in:
-    sort_key = "net_flow_1w" if sort_mode == "金額順" else "inflow_rate_1w"
-    inflows = sorted([i for i in items if i["net_flow_1w"] >= 0], key=lambda x: x[sort_key], reverse=True)
+    sort_key = "display_flow" if sort_mode == "金額順" else "display_rate"
+    inflows = sorted([i for i in items if i["display_flow"] >= 0], key=lambda x: x[sort_key], reverse=True)
     
-    for rank, item in enumerate(inflows[:10], 1):
-        top_cls = "card-top1" if rank == 1 else ""
-        streak_html = ""
-        if item.get("consecutive_days", 0) >= 2:
-            streak_html = f'<span class="badge-streak">{item["consecutive_days"]}日連続流入</span>'
-        
-        tag_count = f'{item.get("theme_count", len(item.get("themes", [])))} テーマ' if unit_mode == "大分類" else f'{item.get("ticker_count", len(item.get("tickers", [])))} 銘柄'
-        
-        # Build clean unindented HTML to avoid Markdown code-block interpretation
-        card_html = f"""<div class="flow-card {top_cls}"><div style="display: flex; align-items: center; gap: 12px;"><div class="rank-num">{rank}</div><div><div class="theme-name">{item['name']}</div><div style="display: flex; gap: 6px; margin-top: 4px;"><span class="badge-gray">{tag_count}</span>{streak_html}</div></div></div><div><div class="flow-amount-pos">{fmt_money(item['net_flow_1w'])}</div><div class="flow-sub">流入率 +{item['inflow_rate_1w']}% · 1D {'+' if item['change_1d']>=0 else ''}{item['change_1d']}%</div></div></div>"""
-        
-        st.markdown(card_html, unsafe_allow_html=True)
+    if not inflows:
+        st.info("条件に一致する純流入データがありません。")
+    else:
+        for rank, item in enumerate(inflows[:10], 1):
+            top_cls = "card-top1" if rank == 1 else ""
+            streak_html = ""
+            if item.get("consecutive_days", 0) >= 2:
+                streak_html = f'<span class="badge-streak">{item["consecutive_days"]}日連続流入</span>'
+            
+            tag_count = f'{item.get("theme_count", len(item.get("themes", [])))} テーマ' if unit_mode == "大分類" else f'{item.get("ticker_count", len(item.get("tickers", [])))} 銘柄'
+            sparkline_svg = render_sparkline_svg(item.get("sparkline", []))
+            
+            card_html = f"""<div class="flow-card {top_cls}">
+<div class="rank-num">{rank}</div>
+<div>
+    <div class="theme-name">{item['name']}</div>
+    <div style="display: flex; gap: 6px; align-items: center;">
+        <span class="badge-gray">{tag_count}</span>
+        {streak_html}
+    </div>
+</div>
+<div class="chart-container">{sparkline_svg}</div>
+<div class="flow-metrics">
+    <div class="flow-amount-pos">{fmt_money(item['display_flow'])}</div>
+    <div class="flow-sub">流入率 +{item['inflow_rate_1w']}% · 1D {'+' if item['change_1d']>=0 else ''}{item['change_1d']}%</div>
+</div>
+</div>"""
+            
+            st.markdown(card_html, unsafe_allow_html=True)
 
-        # Drilldown Expander
-        with st.expander(f"🔍 {item['name']} の構成銘柄・内訳を見る"):
-            if unit_mode == "大分類":
-                subthemes = item.get("subtheme_data", [])
-                st.write("**内包テーマ一覧:**")
-                for sth in subthemes:
-                    st.write(f"- **{sth['name']}**: {fmt_money(sth['net_flow_1w'])} (流入率: +{sth['inflow_rate_1w']}%)")
-            else:
-                stocks = item.get("stocks", [])
-                if stocks:
-                    df_stk = pd.DataFrame(stocks)[["ticker", "latest_price", "change_1d", "net_flow_1w", "inflow_rate_1w", "volume_multiplier"]]
-                    df_stk.columns = ["ティッカー", "株価($)", "1D騰落(%)", "推定フロー($)", "流入率(%)", "出来高倍率"]
-                    st.dataframe(df_stk, use_container_width=True)
+            # Drilldown Expander
+            with st.expander(f"🔍 {item['name']} の構成銘柄・内訳を見る"):
+                if unit_mode == "大分類":
+                    subthemes = item.get("subtheme_data", [])
+                    st.write("**内包テーマ一覧:**")
+                    for sth in subthemes:
+                        st.write(f"- **{sth['name']}**: {fmt_money(sth['net_flow_1w'] * period_factor)} (流入率: +{sth['inflow_rate_1w']}%)")
                 else:
-                    st.write("構成銘柄:", ", ".join(item.get("tickers", [])))
+                    stocks = item.get("stocks", [])
+                    if stocks:
+                        df_stk = pd.DataFrame(stocks)[["ticker", "latest_price", "change_1d", "net_flow_1w", "inflow_rate_1w", "volume_multiplier"]]
+                        df_stk["net_flow_1w"] = df_stk["net_flow_1w"].apply(lambda v: fmt_money(v * period_factor))
+                        df_stk.columns = ["ティッカー", "株価($)", "1D騰落(%)", f"推定フロー({period_label})", "流入率(%)", "出来高倍率"]
+                        st.dataframe(df_stk, use_container_width=True)
+                    else:
+                        st.write("構成銘柄:", ", ".join(item.get("tickers", [])))
 
 with tab_out:
-    sort_key = "net_flow_1w" if sort_mode == "金額順" else "inflow_rate_1w"
-    outflows = sorted([i for i in items if i["net_flow_1w"] < 0], key=lambda x: x[sort_key])
+    sort_key = "display_flow" if sort_mode == "金額順" else "display_rate"
+    outflows = sorted([i for i in items if i["display_flow"] < 0], key=lambda x: x[sort_key])
     
-    for rank, item in enumerate(outflows[:10], 1):
-        streak_html = ""
-        if item.get("consecutive_days", 0) >= 2:
-            streak_html = f'<span class="badge-streak-neg">{item["consecutive_days"]}日連続流出</span>'
-        
-        tag_count = f'{item.get("theme_count", len(item.get("themes", [])))} テーマ' if unit_mode == "大分類" else f'{item.get("ticker_count", len(item.get("tickers", [])))} 銘柄'
-        
-        card_html = f"""<div class="flow-card"><div style="display: flex; align-items: center; gap: 12px;"><div class="rank-num">{rank}</div><div><div class="theme-name">{item['name']}</div><div style="display: flex; gap: 6px; margin-top: 4px;"><span class="badge-gray">{tag_count}</span>{streak_html}</div></div></div><div><div class="flow-amount-neg">{fmt_money(item['net_flow_1w'])}</div><div class="flow-sub">流入率 {item['inflow_rate_1w']}% · 1D {'+' if item['change_1d']>=0 else ''}{item['change_1d']}%</div></div></div>"""
-        
-        st.markdown(card_html, unsafe_allow_html=True)
+    if not outflows:
+        st.info("条件に一致する純流出データがありません。")
+    else:
+        for rank, item in enumerate(outflows[:10], 1):
+            streak_html = ""
+            if item.get("consecutive_days", 0) >= 2:
+                streak_html = f'<span class="badge-streak-neg">{item["consecutive_days"]}日連続流出</span>'
+            
+            tag_count = f'{item.get("theme_count", len(item.get("themes", [])))} テーマ' if unit_mode == "大分類" else f'{item.get("ticker_count", len(item.get("tickers", [])))} 銘柄'
+            sparkline_svg = render_sparkline_svg(item.get("sparkline", []))
+            
+            card_html = f"""<div class="flow-card">
+<div class="rank-num">{rank}</div>
+<div>
+    <div class="theme-name">{item['name']}</div>
+    <div style="display: flex; gap: 6px; align-items: center;">
+        <span class="badge-gray">{tag_count}</span>
+        {streak_html}
+    </div>
+</div>
+<div class="chart-container">{sparkline_svg}</div>
+<div class="flow-metrics">
+    <div class="flow-amount-neg">{fmt_money(item['display_flow'])}</div>
+    <div class="flow-sub">流入率 {item['inflow_rate_1w']}% · 1D {'+' if item['change_1d']>=0 else ''}{item['change_1d']}%</div>
+</div>
+</div>"""
+            
+            st.markdown(card_html, unsafe_allow_html=True)
 
 st.caption("※ 資金フローは売買代金と高安終値の位置関係から推計した参考値です。")

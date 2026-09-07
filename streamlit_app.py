@@ -53,7 +53,7 @@ st.markdown("""<style>
         border: 1px solid #e2e8f0;
         border-radius: 12px;
         padding: 12px 18px;
-        margin-bottom: 10px;
+        margin-bottom: 6px;
         display: grid;
         grid-template-columns: 28px 1fr 110px 150px;
         align-items: center;
@@ -157,10 +157,7 @@ st.markdown("""<style>
 """, unsafe_allow_html=True)
 
 # App Header
-st.markdown("""<div class="main-header">
-<div class="main-title">💰 資金フロー Top10 / Bottom10</div>
-<div class="subtitle">売買代金 × 騰落方向で概算した資金の向きです（実需を捉える出来高加重フロー推計）</div>
-</div>""", unsafe_allow_html=True)
+st.markdown("""<div class="main-header"><div class="main-title">💰 資金フロー Top10 / Bottom10</div><div class="subtitle">売買代金 × 騰落方向で概算した資金の向きです（実需を捉える出来高加重フロー推計）</div></div>""", unsafe_allow_html=True)
 
 # Load / Cache Data
 @st.cache_data(ttl=3600)
@@ -211,6 +208,8 @@ if real_only:
 
 # Formatters
 def fmt_money(val):
+    if val is None:
+        return "$0"
     sign = "-" if val < 0 else ""
     abs_v = abs(val)
     if abs_v >= 1e9:
@@ -219,7 +218,13 @@ def fmt_money(val):
         return f"{sign}${abs_v/1e6:.0f}M"
     return f"{sign}${abs_v:.0f}"
 
-# Crisp SVG Sparkline Generator
+def fmt_percent(val):
+    if val is None:
+        return "0.0%"
+    sign = "+" if val > 0 else ""
+    return f"{sign}{val:.1f}%"
+
+# Crisp SVG Sparkline Generator (Single line string)
 def render_sparkline_svg(sparkline):
     if not sparkline or len(sparkline) == 0:
         sparkline = [0, 0, 0, 0, 0]
@@ -246,96 +251,78 @@ def render_sparkline_svg(sparkline):
         
         bars_svg += f'<rect x="{x}" y="{y}" width="{bar_w}" height="{bar_h}" rx="2" fill="{color}" />'
 
-    return f"""<svg width="{svg_w}" height="{svg_h}" viewBox="0 0 {svg_w} {svg_h}" xmlns="http://www.w3.org/2000/svg">
-        <line x1="0" y1="{baseline_y}" x2="{svg_w}" y2="{baseline_y}" stroke="#cbd5e1" stroke-dasharray="2,2" stroke-width="1" />
-        {bars_svg}
-    </svg>"""
+    return f'<svg width="{svg_w}" height="{svg_h}" viewBox="0 0 {svg_w} {svg_h}" xmlns="http://www.w3.org/2000/svg"><line x1="0" y1="{baseline_y}" x2="{svg_w}" y2="{baseline_y}" stroke="#cbd5e1" stroke-dasharray="2,2" stroke-width="1" />{bars_svg}</svg>'
 
 # Tabs
 tab_in, tab_out = st.tabs([f"🟢 純流入 Top10 ({period_label})", f"🔴 純流出 Top10 ({period_label})"])
 
+def render_item_list(item_list, is_inflow=True):
+    if not item_list:
+        msg = "条件に一致する純流入データがありません。" if is_inflow else "条件に一致する純流出データがありません。"
+        st.info(msg)
+        return
+
+    for rank, item in enumerate(item_list[:10], 1):
+        top_cls = "card-top1" if (rank == 1 and is_inflow) else ""
+        streak_html = ""
+        if item.get("consecutive_days", 0) >= 2:
+            is_streak_pos = item.get("is_consecutive_inflow", is_inflow)
+            streak_cls = "badge-streak" if is_streak_pos else "badge-streak-neg"
+            streak_text = f'{item["consecutive_days"]}日連続{"流入" if is_streak_pos else "流出"}'
+            streak_html = f'<span class="{streak_cls}">{streak_text}</span>'
+        
+        tag_count = f'{item.get("theme_count", len(item.get("themes", [])))} テーマ' if unit_mode == "大分類" else f'{item.get("ticker_count", len(item.get("tickers", [])))} 銘柄'
+        sparkline_svg = render_sparkline_svg(item.get("sparkline", []))
+        amount_cls = "flow-amount-pos" if is_inflow else "flow-amount-neg"
+        
+        rate_str = fmt_percent(item.get("inflow_rate_1w", 0))
+        change_str = fmt_percent(item.get("change_1d", 0))
+        
+        # Minified single-line card html
+        card_html = (
+            f'<div class="flow-card {top_cls}">'
+            f'<div class="rank-num">{rank}</div>'
+            f'<div><div class="theme-name">{item["name"]}</div>'
+            f'<div style="display: flex; gap: 6px; align-items: center;"><span class="badge-gray">{tag_count}</span>{streak_html}</div></div>'
+            f'<div class="chart-container">{sparkline_svg}</div>'
+            f'<div class="flow-metrics">'
+            f'<div class="{amount_cls}">{fmt_money(item["display_flow"])}</div>'
+            f'<div class="flow-sub">流入率 {rate_str} · 1D {change_str}</div></div>'
+            f'</div>'
+        )
+        
+        st.markdown(card_html, unsafe_allow_html=True)
+
+        # Drilldown Expander
+        with st.expander(f"🔍 {item['name']} の構成銘柄・内訳を見る"):
+            if unit_mode == "大分類":
+                subthemes = item.get("subtheme_data", [])
+                st.write("**内包テーマ一覧:**")
+                for sth in subthemes:
+                    th_rate = fmt_percent(sth.get("inflow_rate_1w", 0))
+                    th_flow = fmt_money(sth.get("net_flow_1w", 0) * period_factor)
+                    st.write(f"- **{sth['name']}**: {th_flow} (流入率: {th_rate})")
+            else:
+                stocks = item.get("stocks", [])
+                if stocks:
+                    df_stk = pd.DataFrame(stocks)[["ticker", "latest_price", "change_1d", "net_flow_1w", "inflow_rate_1w", "volume_multiplier"]].copy()
+                    df_stk["change_1d"] = df_stk["change_1d"].apply(fmt_percent)
+                    df_stk["inflow_rate_1w"] = df_stk["inflow_rate_1w"].apply(fmt_percent)
+                    df_stk["net_flow_1w"] = df_stk["net_flow_1w"].apply(lambda v: fmt_money(v * period_factor))
+                    df_stk["volume_multiplier"] = df_stk["volume_multiplier"].apply(lambda v: f"{v:.2f}x")
+                    df_stk.columns = ["ティッカー", "株価($)", "1D騰落", f"推定フロー({period_label})", "流入率", "出来高倍率"]
+                    st.dataframe(df_stk, use_container_width=True, hide_index=True)
+                else:
+                    st.write("構成銘柄:", ", ".join(item.get("tickers", [])))
+
 with tab_in:
     sort_key = "display_flow" if sort_mode == "金額順" else "display_rate"
     inflows = sorted([i for i in items if i["display_flow"] >= 0], key=lambda x: x[sort_key], reverse=True)
-    
-    if not inflows:
-        st.info("条件に一致する純流入データがありません。")
-    else:
-        for rank, item in enumerate(inflows[:10], 1):
-            top_cls = "card-top1" if rank == 1 else ""
-            streak_html = ""
-            if item.get("consecutive_days", 0) >= 2:
-                streak_html = f'<span class="badge-streak">{item["consecutive_days"]}日連続流入</span>'
-            
-            tag_count = f'{item.get("theme_count", len(item.get("themes", [])))} テーマ' if unit_mode == "大分類" else f'{item.get("ticker_count", len(item.get("tickers", [])))} 銘柄'
-            sparkline_svg = render_sparkline_svg(item.get("sparkline", []))
-            
-            card_html = f"""<div class="flow-card {top_cls}">
-<div class="rank-num">{rank}</div>
-<div>
-    <div class="theme-name">{item['name']}</div>
-    <div style="display: flex; gap: 6px; align-items: center;">
-        <span class="badge-gray">{tag_count}</span>
-        {streak_html}
-    </div>
-</div>
-<div class="chart-container">{sparkline_svg}</div>
-<div class="flow-metrics">
-    <div class="flow-amount-pos">{fmt_money(item['display_flow'])}</div>
-    <div class="flow-sub">流入率 +{item['inflow_rate_1w']}% · 1D {'+' if item['change_1d']>=0 else ''}{item['change_1d']}%</div>
-</div>
-</div>"""
-            
-            st.markdown(card_html, unsafe_allow_html=True)
-
-            # Drilldown Expander
-            with st.expander(f"🔍 {item['name']} の構成銘柄・内訳を見る"):
-                if unit_mode == "大分類":
-                    subthemes = item.get("subtheme_data", [])
-                    st.write("**内包テーマ一覧:**")
-                    for sth in subthemes:
-                        st.write(f"- **{sth['name']}**: {fmt_money(sth['net_flow_1w'] * period_factor)} (流入率: +{sth['inflow_rate_1w']}%)")
-                else:
-                    stocks = item.get("stocks", [])
-                    if stocks:
-                        df_stk = pd.DataFrame(stocks)[["ticker", "latest_price", "change_1d", "net_flow_1w", "inflow_rate_1w", "volume_multiplier"]]
-                        df_stk["net_flow_1w"] = df_stk["net_flow_1w"].apply(lambda v: fmt_money(v * period_factor))
-                        df_stk.columns = ["ティッカー", "株価($)", "1D騰落(%)", f"推定フロー({period_label})", "流入率(%)", "出来高倍率"]
-                        st.dataframe(df_stk, use_container_width=True)
-                    else:
-                        st.write("構成銘柄:", ", ".join(item.get("tickers", [])))
+    render_item_list(inflows, is_inflow=True)
 
 with tab_out:
     sort_key = "display_flow" if sort_mode == "金額順" else "display_rate"
     outflows = sorted([i for i in items if i["display_flow"] < 0], key=lambda x: x[sort_key])
-    
-    if not outflows:
-        st.info("条件に一致する純流出データがありません。")
-    else:
-        for rank, item in enumerate(outflows[:10], 1):
-            streak_html = ""
-            if item.get("consecutive_days", 0) >= 2:
-                streak_html = f'<span class="badge-streak-neg">{item["consecutive_days"]}日連続流出</span>'
-            
-            tag_count = f'{item.get("theme_count", len(item.get("themes", [])))} テーマ' if unit_mode == "大分類" else f'{item.get("ticker_count", len(item.get("tickers", [])))} 銘柄'
-            sparkline_svg = render_sparkline_svg(item.get("sparkline", []))
-            
-            card_html = f"""<div class="flow-card">
-<div class="rank-num">{rank}</div>
-<div>
-    <div class="theme-name">{item['name']}</div>
-    <div style="display: flex; gap: 6px; align-items: center;">
-        <span class="badge-gray">{tag_count}</span>
-        {streak_html}
-    </div>
-</div>
-<div class="chart-container">{sparkline_svg}</div>
-<div class="flow-metrics">
-    <div class="flow-amount-neg">{fmt_money(item['display_flow'])}</div>
-    <div class="flow-sub">流入率 {item['inflow_rate_1w']}% · 1D {'+' if item['change_1d']>=0 else ''}{item['change_1d']}%</div>
-</div>
-</div>"""
-            
-            st.markdown(card_html, unsafe_allow_html=True)
+    render_item_list(outflows, is_inflow=False)
 
 st.caption("※ 資金フローは売買代金と高安終値の位置関係から推計した参考値です。")
